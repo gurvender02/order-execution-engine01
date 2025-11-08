@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Order Status WebSocket Test</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #dfe9f3 0%, #ffffff 100%);
+            color: #333;
+        }
+
+        .container {
+            max-width: 850px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 16px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+            border: 1px solid #eee;
+        }
+
+        h2 {
+            text-align: center;
+            color: #007acc;
+            margin-bottom: 25px;
+        }
+
+        .input-group {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 25px;
+        }
+
+        input {
+            padding: 10px;
+            width: 320px;
+            border: 2px solid #007acc;
+            border-radius: 8px;
+            outline: none;
+            transition: 0.3s;
+        }
+
+        input:focus {
+            border-color: #00bcd4;
+            box-shadow: 0 0 5px rgba(0, 188, 212, 0.4);
+        }
+
+        button {
+            background: linear-gradient(90deg, #007acc, #00bcd4);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 10px 15px;
+            margin: 0 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: 0.3s;
+        }
+
+        button:hover {
+            transform: scale(1.05);
+            background: linear-gradient(90deg, #006bb3, #00a1c9);
+            box-shadow: 0 3px 10px rgba(0, 123, 204, 0.3);
+        }
+
+        #status {
+            border: 2px solid #e0e0e0;
+            padding: 12px;
+            height: 300px;
+            overflow-y: auto;
+            margin-top: 20px;
+            background: #f9f9f9;
+            border-radius: 10px;
+        }
+
+        .status-item {
+            margin: 6px 0;
+            padding: 10px;
+            border-left: 5px solid #007acc;
+            background: #ffffff;
+            border-radius: 5px;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+            transition: 0.3s;
+        }
+
+        .status-item:hover {
+            transform: scale(1.01);
+        }
+
+        /* Colored states */
+        .pending { border-left-color: #ffa500; background: #fff4e0; }
+        .routing { border-left-color: #fdd835; background: #fffde7; }
+        .building { border-left-color: #00bcd4; background: #e0f7fa; }
+        .submitted { border-left-color: #2196f3; background: #e3f2fd; }
+        .confirmed { border-left-color: #4caf50; background: #e8f5e9; }
+        .failed { border-left-color: #f44336; background: #ffebee; }
+        .connected { border-left-color: #4caf50; background: #e8f5e9; }
+        .disconnected { border-left-color: #f44336; background: #ffebee; }
+        .error { border-left-color: #ff5252; background: #ffebee; }
+
+        h3 {
+            color: #006bb3;
+            margin-top: 30px;
+        }
+
+        .quick-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .quick-buttons button {
+            flex: 1;
+            min-width: 200px;
+            background: linear-gradient(90deg, #ff9800, #ffc107);
+            color: #fff;
+        }
+
+        .quick-buttons button:hover {
+            background: linear-gradient(90deg, #ff8c00, #ffb300);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>🎯 Order Execution Engine - WebSocket Test</h2>
+        
+        <div class="input-group">
+            <input type="text" id="orderId" placeholder="Enter Order ID">
+            <button onclick="connectWebSocket()">🔌 Connect WebSocket</button>
+            <button onclick="disconnectWebSocket()" style="background: linear-gradient(90deg, #d32f2f, #f44336);">🔴 Disconnect</button>
+        </div>
+
+        <div>
+            <h3>Quick Test Orders:</h3>
+            <div class="quick-buttons">
+                <button onclick="testOrder('SOL', 'USDC', 1.0)">🔄 SOL → USDC (1.0)</button>
+                <button onclick="testOrder('USDC', 'SOL', 100)">🔄 USDC → SOL (100)</button>
+                <button onclick="testOrder('SOL', 'RAY', 2.0)">🔄 SOL → RAY (2.0)</button>
+            </div>
+        </div>
+
+        <h3>Status Updates:</h3>
+        <div id="status">
+            <div class="status-item">🕒 Status messages will appear here...</div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let currentOrderId = null;
+        
+        function connectWebSocket() {
+            const orderId = document.getElementById('orderId').value;
+            if (!orderId) {
+                alert('Please enter an Order ID');
+                return;
+            }
+            
+            if (ws) {
+                ws.close();
+            }
+            
+            currentOrderId = orderId;
+            ws = new WebSocket(`ws://localhost:3001/ws/${orderId}`);
+            
+            ws.onopen = function() {
+                addStatus('✅ WebSocket connected for order: ' + orderId, 'connected');
+            };
+            
+            ws.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                addStatus(`📊 Status: ${data.status} | Price: ${data.data?.executedPrice || 'N/A'} | TX: ${data.data?.txHash || 'N/A'}`, data.status);
+                
+                if (data.status === 'confirmed' || data.status === 'failed') {
+                    addStatus('💡 Order processing complete. You can disconnect now.', 'info');
+                }
+            };
+            
+            ws.onclose = function() {
+                addStatus('🔴 WebSocket disconnected', 'disconnected');
+                ws = null;
+            };
+            
+            ws.onerror = function(error) {
+                addStatus('❌ WebSocket error: ' + error, 'error');
+            };
+        }
+        
+        function disconnectWebSocket() {
+            if (ws) {
+                ws.close();
+            }
+        }
+        
+        function addStatus(message, status = 'info') {
+            const statusDiv = document.getElementById('status');
+            const statusItem = document.createElement('div');
+            statusItem.className = `status-item ${status}`;
+            statusItem.innerHTML = `<strong>${new Date().toLocaleTimeString()}:</strong> ${message}`;
+            statusDiv.appendChild(statusItem);
+            statusDiv.scrollTop = statusDiv.scrollHeight;
+        }
+        
+        async function testOrder(tokenIn, tokenOut, amount) {
+            try {
+                addStatus(`🔄 Creating test order: ${tokenIn} → ${tokenOut} (${amount})`, 'info');
+                
+                const response = await fetch('http://localhost:3001/api/orders/execute', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        tokenIn: tokenIn,
+                        tokenOut: tokenOut,
+                        amount: amount
+                    })
+                });
+                
+                const data = await response.json();
+                addStatus(`✅ Order created: ${data.orderId}`, 'info');
+                
+                document.getElementById('orderId').value = data.orderId;
+                setTimeout(() => connectWebSocket(), 500);
+                
+            } catch (error) {
+                addStatus(`❌ Failed to create order: ${error}`, 'error');
+            }
+        }
+    </script>
+</body>
+</html>
